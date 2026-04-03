@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "RULE-001",
+      "name": "악성 쉘 탐지",
+      "type": "signature",
+      "patterns": ["/bin/sh", "/bin/bash", "cmd.exe", "sh.1.html"],
+      "severity": "CRITICAL",
+      "action": "sandbox"
+    },
+    {
+      "id": "RULE-002",
+      "name": "악성 다운로드 탐지",
+      "type": "signature",
+      "patterns": ["wget http", "curl http", "Moved Permanently"],
+      "severity": "HIGH",
+      "action": "sandbox"
+    },
+    {
+      "id": "RULE-003",
+      "name": "HTTP 요청 탐지",
+      "type": "signature",
+      "patterns": ["GET /linux", "User-Agent: curl"],
+      "severity": "MEDIUM",
+      "action": "alert"
+    },
+    {
+      "id": "RULE-004",
+      "name": "포트 스캔 탐지",
+      "type": "heuristic",
+      "threshold": { "connections": 20, "window_sec": 5 },
+      "severity": "HIGH",
+      "action": "sandbox"
+    }
+  ]
+}

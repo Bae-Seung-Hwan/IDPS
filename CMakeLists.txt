@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Threads REQUIRED)
+find_package(nlohmann_json REQUIRED)
 find_library(PCAP_LIB pcap REQUIRED)
 find_library(SQLITE3_LIB sqlite3 REQUIRED)
 find_library(SECCOMP_LIB seccomp REQUIRED)
@@ -18,6 +19,7 @@ target_link_libraries(idps
     ${PCAP_LIB}
     ${SQLITE3_LIB}
     ${SECCOMP_LIB}
+    nlohmann_json::nlohmann_json
 )
 
 target_compile_options(idps PRIVATE -Wall -Wextra)

@@ -9,6 +9,7 @@
 #include "ids/alert_manager.hpp"
 #include "control/logger.hpp"
 #include "control/ipc_broker.hpp"
+#include "control/policy_engine.hpp"
 #include "sandbox/sandbox_manager.hpp"
 #include "sandbox/behavior_monitor.hpp"
 
@@ -33,6 +34,29 @@ int main() {
     if (!logger.init()) return 1;
     g_logger = &logger;
 
+    // 정책 엔진
+    PolicyEngine policy_engine("../rules/default.json");
+    if (!policy_engine.load()) {
+        std::cerr << "[main] 룰 파일 로드 실패" << std::endl;
+        return 1;
+    }
+    policy_engine.printPolicy();
+
+    // 시그니처 엔진
+    SignatureEngine engine;
+    for (const auto& rule : policy_engine.getPolicy().signature_rules)
+        engine.addRule(rule);
+    engine.build();
+
+    // 룰 변경 시 자동 재빌드
+    policy_engine.setCallback([&engine](const Policy& policy) {
+        std::cout << "[PolicyEngine] 룰 변경 → 시그니처 엔진 재빌드\n";
+        for (const auto& rule : policy.signature_rules)
+            engine.addRule(rule);
+        engine.build();
+    });
+    policy_engine.startHotReload(10);
+
     // 행동 모니터
     BehaviorMonitor behavior_monitor;
     g_behavior_monitor = &behavior_monitor;
@@ -44,18 +68,18 @@ int main() {
                   << std::endl;
     });
 
-    // IPC 서버 (Sandbox 측)
-    IpcServer ipc_server("/tmp/idps.sock");
+    // 샌드박스 매니저
     SandboxManager sandbox;
     g_sandbox_manager = &sandbox;
 
-    // 격리 완료 시 행동 모니터링 시작
     sandbox.setCallback([&](const SandboxEntry& entry) {
         std::cout << "[Sandbox] 격리 완료 → 행동 모니터링 시작\n";
         behavior_monitor.startMonitoring(entry.original_pid);
     });
 
-    // IPC 서버 콜백
+    // IPC 서버
+    IpcServer ipc_server("/tmp/idps.sock");
+
     ipc_server.setCallback([&sandbox](const IpcMessage& msg) {
         if (msg.type == IpcMessageType::ISOLATE_REQUEST) {
             std::cout << "[IPC] 격리 요청 수신: PID=" << msg.pid
@@ -66,19 +90,9 @@ int main() {
     });
     ipc_server.start();
 
-    // IPC 클라이언트 (IDS 측)
+    // IPC 클라이언트
     IpcClient ipc_client("/tmp/idps.sock");
     ipc_client.connect();
-
-    // 시그니처 엔진
-    SignatureEngine engine;
-    engine.addRule({"RULE-001", "악성 쉘 탐지",
-                    {"/bin/sh", "/bin/bash", "cmd.exe", "sh.1.html"}, "CRITICAL"});
-    engine.addRule({"RULE-002", "악성 다운로드 탐지",
-                    {"wget http", "curl http", "Moved Permanently"}, "HIGH"});
-    engine.addRule({"RULE-003", "HTTP 요청 탐지",
-                    {"GET /linux", "User-Agent: curl"}, "MEDIUM"});
-    engine.build();
 
     // 경보 매니저
     AlertManager alert_manager(10);
@@ -136,11 +150,11 @@ int main() {
     alert_manager.printStats();
     sandbox.printIsolated();
 
-    // 격리된 프로세스 행동 보고서 출력
     for (const auto& [pid, entry] : sandbox.getIsolated())
         behavior_monitor.printReport(pid);
 
     logger.printRecentAlerts(10);
+    policy_engine.stopHotReload();
     ipc_server.stop();
 
     return 0;
