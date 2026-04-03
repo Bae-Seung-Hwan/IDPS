@@ -109,7 +109,7 @@ sudo apt install build-essential cmake libpcap-dev libsqlite3-dev libseccomp-dev
 ### 빌드
 
 ```bash
-git clone https://github.com/yourusername/idps.git
+git clone https://github.com/Bae-Seung-Hawn/IDPS.git
 cd idps
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
