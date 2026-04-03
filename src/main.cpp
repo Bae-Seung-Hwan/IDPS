@@ -7,6 +7,7 @@
 #include "ids/packet_parser.hpp"
 #include "ids/signature_engine.hpp"
 #include "ids/alert_manager.hpp"
+#include "ids/port_scan_detector.hpp"
 #include "control/logger.hpp"
 #include "control/ipc_broker.hpp"
 #include "control/policy_engine.hpp"
@@ -29,12 +30,12 @@ int main() {
     std::cout << "IDPS starting..." << std::endl;
     std::signal(SIGINT, signalHandler);
 
-    // Logger
+    // ── Logger ────────────────────────────────
     Logger logger("./idps.db");
     if (!logger.init()) return 1;
     g_logger = &logger;
 
-    // 정책 엔진
+    // ── 정책 엔진 ─────────────────────────────
     PolicyEngine policy_engine("../rules/default.json");
     if (!policy_engine.load()) {
         std::cerr << "[main] 룰 파일 로드 실패" << std::endl;
@@ -42,13 +43,12 @@ int main() {
     }
     policy_engine.printPolicy();
 
-    // 시그니처 엔진
+    // ── 시그니처 엔진 ─────────────────────────
     SignatureEngine engine;
     for (const auto& rule : policy_engine.getPolicy().signature_rules)
         engine.addRule(rule);
     engine.build();
 
-    // 룰 변경 시 자동 재빌드
     policy_engine.setCallback([&engine](const Policy& policy) {
         std::cout << "[PolicyEngine] 룰 변경 → 시그니처 엔진 재빌드\n";
         for (const auto& rule : policy.signature_rules)
@@ -57,7 +57,7 @@ int main() {
     });
     policy_engine.startHotReload(10);
 
-    // 행동 모니터
+    // ── 행동 모니터 ───────────────────────────
     BehaviorMonitor behavior_monitor;
     g_behavior_monitor = &behavior_monitor;
 
@@ -68,7 +68,7 @@ int main() {
                   << std::endl;
     });
 
-    // 샌드박스 매니저
+    // ── 샌드박스 매니저 ───────────────────────
     SandboxManager sandbox;
     g_sandbox_manager = &sandbox;
 
@@ -77,7 +77,7 @@ int main() {
         behavior_monitor.startMonitoring(entry.original_pid);
     });
 
-    // IPC 서버
+    // ── IPC 서버 ──────────────────────────────
     IpcServer ipc_server("/tmp/idps.sock");
 
     ipc_server.setCallback([&sandbox](const IpcMessage& msg) {
@@ -90,11 +90,11 @@ int main() {
     });
     ipc_server.start();
 
-    // IPC 클라이언트
+    // ── IPC 클라이언트 ────────────────────────
     IpcClient ipc_client("/tmp/idps.sock");
     ipc_client.connect();
 
-    // 경보 매니저
+    // ── 경보 매니저 ───────────────────────────
     AlertManager alert_manager(10);
     g_alert_manager = &alert_manager;
 
@@ -127,8 +127,26 @@ int main() {
         }
     });
 
-    // 패킷 캡처
-    PacketCapture capture("eth0", [&](const PacketInfo& raw_pkt) {
+    // ── 포트스캔 탐지기 ───────────────────────
+    PortScanDetector port_scan_detector(3,5);
+
+    port_scan_detector.setCallback([&](const PortScanResult& result) {
+        std::cout << "[PortScan] 격리 대상: " << result.src_ip << "\n";
+
+        ThreatInfo threat;
+        threat.rule_id         = "RULE-004";
+        threat.rule_name       = "포트 스캔 탐지";
+        threat.matched_pattern = std::to_string(result.port_count) + "개 포트";
+        threat.severity        = result.severity;
+        threat.packet.src_ip   = result.src_ip;
+        threat.packet.dst_ip   = "0.0.0.0";
+        threat.packet.src_port = 0;
+        threat.packet.dst_port = 0;
+        alert_manager.onThreat(threat);
+    });
+
+    // ── 패킷 캡처 ─────────────────────────────
+    PacketCapture capture("any", [&](const PacketInfo& raw_pkt) {
         ParsedPacket pkt = PacketParser::parse(
             raw_pkt.raw_data.data(),
             raw_pkt.raw_data.size()
@@ -137,9 +155,13 @@ int main() {
         PacketParser::print(pkt);
         logger.logPacket(pkt);
 
+        // 시그니처 분석
         engine.analyze(raw_pkt, [&](const ThreatInfo& threat) {
             alert_manager.onThreat(threat);
         });
+
+        // 포트스캔 분석
+        port_scan_detector.analyze(pkt);
     });
 
     capture.start();
@@ -147,8 +169,10 @@ int main() {
     std::this_thread::sleep_for(std::chrono::seconds(30));
     capture.stop();
 
+    // ── 종료 시 통계 출력 ─────────────────────
     alert_manager.printStats();
     sandbox.printIsolated();
+    port_scan_detector.printStats();
 
     for (const auto& [pid, entry] : sandbox.getIsolated())
         behavior_monitor.printReport(pid);
