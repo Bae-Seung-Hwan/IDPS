@@ -11,6 +11,7 @@
 #include "control/logger.hpp"
 #include "control/ipc_broker.hpp"
 #include "control/policy_engine.hpp"
+#include "control/rest_api.hpp"
 #include "sandbox/sandbox_manager.hpp"
 #include "sandbox/behavior_monitor.hpp"
 
@@ -128,7 +129,7 @@ int main() {
     });
 
     // ── 포트스캔 탐지기 ───────────────────────
-    PortScanDetector port_scan_detector(3,5);
+    PortScanDetector port_scan_detector(3, 5);
 
     port_scan_detector.setCallback([&](const PortScanResult& result) {
         std::cout << "[PortScan] 격리 대상: " << result.src_ip << "\n";
@@ -145,8 +146,16 @@ int main() {
         alert_manager.onThreat(threat);
     });
 
+    // ── REST API 서버 ─────────────────────────
+    RestApi rest_api(8080);
+    rest_api.setAlertManager(&alert_manager);
+    rest_api.setSandboxManager(&sandbox);
+    rest_api.setLogger(&logger);
+    rest_api.setPolicyEngine(&policy_engine);
+    rest_api.start();
+
     // ── 패킷 캡처 ─────────────────────────────
-    PacketCapture capture("any", [&](const PacketInfo& raw_pkt) {
+    PacketCapture capture("eth0", [&](const PacketInfo& raw_pkt) {
         ParsedPacket pkt = PacketParser::parse(
             raw_pkt.raw_data.data(),
             raw_pkt.raw_data.size()
@@ -155,12 +164,10 @@ int main() {
         PacketParser::print(pkt);
         logger.logPacket(pkt);
 
-        // 시그니처 분석
         engine.analyze(raw_pkt, [&](const ThreatInfo& threat) {
             alert_manager.onThreat(threat);
         });
 
-        // 포트스캔 분석
         port_scan_detector.analyze(pkt);
     });
 
@@ -179,6 +186,7 @@ int main() {
 
     logger.printRecentAlerts(10);
     policy_engine.stopHotReload();
+    rest_api.stop();
     ipc_server.stop();
 
     return 0;
