@@ -195,8 +195,8 @@ sudo apt install build-essential cmake \
 ### 빌드
 
 ```bash
-git clone https://github.com/yourusername/idps.git
-cd idps
+git clone https://github.com/Bae-Seung-Hwan/IDPS.git
+cd IDPS
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
