@@ -11,7 +11,7 @@ ParsedPacket PacketParser::parse(const u_char* raw_packet, int length) {
     // 이더넷 헤더 스킵 (14바이트)
     if (length < 14) return pkt;
     const u_char* ip_data = raw_packet + 14;
-    int remaining = length - 14;
+    // int remaining = length - 14;
 
     parseIP(ip_data, pkt);
 
