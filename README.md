@@ -135,13 +135,13 @@ pid_t child = clone(child_func, stack_top, flags, &args);
 
 | syscall | 기본 프로파일 | 엄격한 프로파일 |
 |---------|--------------|----------------|
-| read / write | ✅ 허용 | ✅ 허용 |
-| open / close | ✅ 허용 | ❌ 차단 |
-| socket | ❌ 차단 | ❌ 차단 |
-| connect | ❌ 차단 | ❌ 차단 |
-| execve | ❌ 차단 | ❌ 차단 |
-| fork / clone | ❌ 차단 | ❌ 차단 |
-| setuid | ❌ 차단 | ❌ 차단 |
+| read / write |  허용 |  허용 |
+| open / close |  허용 |  차단 |
+| socket |  차단 |  차단 |
+| connect |  차단 |  차단 |
+| execve |  차단 |  차단 |
+| fork / clone |  차단 |  차단 |
+| setuid |  차단 |  차단 |
 
 ---
 
@@ -231,11 +231,11 @@ cd build && ./idps_test
 
 | 테스트 스위트 | 테스트 수 | 결과 |
 |--------------|-----------|------|
-| SignatureEngineTest | 5개 | ✅ PASSED |
-| AlertManagerTest | 3개 | ✅ PASSED |
-| PolicyEngineTest | 6개 | ✅ PASSED |
-| SeccompFilterTest | 4개 | ✅ PASSED |
-| **합계** | **18개** | **✅ ALL PASSED** |
+| SignatureEngineTest | 5개 |  PASSED |
+| AlertManagerTest | 3개 |  PASSED |
+| PolicyEngineTest | 6개 |  PASSED |
+| SeccompFilterTest | 4개 |  PASSED |
+| **합계** | **18개** | ** ALL PASSED** |
 
 ---
 
