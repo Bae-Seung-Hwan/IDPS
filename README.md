@@ -196,3 +196,7 @@ sudo ./idps --interface eth0 --pcap ../tests/pcap_samples/portscan.pcap
 ## 라이선스
 
 MIT License. 자세한 내용은 [LICENSE](./LICENSE)를 참고하세요.
+
+##실행 결과
+<img width="307" height="421" alt="image" src="https://github.com/user-attachments/assets/affa3f43-022d-457d-9d76-1c5e4f8d9164" />
+<img width="777" height="488" alt="image" src="https://github.com/user-attachments/assets/971c5a57-c3b4-4cc8-904f-91856c53ff11" />
