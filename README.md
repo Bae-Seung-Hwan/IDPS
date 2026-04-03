@@ -196,40 +196,160 @@ sudo ./idps --interface eth0 --pcap ../tests/pcap_samples/portscan.pcap
 ## 라이선스
 
 MIT License. 자세한 내용은 [LICENSE](./LICENSE)를 참고하세요.
-## 추가
-포트스캔 탐지
-슬라이딩 윈도우로 같은 IP에서
-짧은 시간 안에 여러 포트에 SYN 패킷이 오면 → 포트스캔으로 판단
+## 구현 현황
 
-예시:
-192.168.1.1 → 포트 80  (SYN)  ┐
-192.168.1.1 → 포트 443 (SYN)  │ 5초 안에
-192.168.1.1 → 포트 22  (SYN)  │ 20개 이상
-192.168.1.1 → 포트 3306(SYN)  ┘
-           → 🚨 포트스캔 탐지!
-python에서 직접 포트스캔 시뮬레이션
-code:
-python3 << 'EOF'
-import socket
-import time
+### 완성된 모듈
 
-target = "8.8.8.8"  # 외부 IP로 스캔
-ports  = [80, 443, 22, 21, 3306, 5432, 8080, 8443, 25, 110]
+| 모듈 | 파일 | 설명 |
+|------|------|------|
+| 패킷 캡처 | `src/ids/packet_capture.cpp` | libpcap 기반 멀티스레드 비동기 캡처 |
+| 패킷 파서 | `src/ids/packet_parser.cpp` | IP/TCP/UDP/ICMP 헤더 상세 파싱, SYN/NULL/XMAS 스캔 감지 |
+| 시그니처 엔진 | `src/ids/signature_engine.cpp` | Aho-Corasick 알고리즘 직접 구현, 멀티 패턴 동시 탐지 |
+| 경보 매니저 | `src/ids/alert_manager.cpp` | 위협 등급 분류, 중복 경보 억제 (슬라이딩 윈도우) |
+| 포트스캔 탐지 | `src/ids/port_scan_detector.cpp` | SYN 패킷 기반 포트스캔 탐지, IP별 스캔 포트 추적 |
+| 로거 | `src/control/logger.cpp` | SQLite3 기반 경보/패킷 로그 영속 저장 |
+| IPC 브로커 | `src/control/ipc_broker.cpp` | Unix domain socket 기반 IDS ↔ Sandbox 통신 |
+| 정책 엔진 | `src/control/policy_engine.cpp` | JSON 룰 파일 로더, 핫 리로드 (파일 변경 자동 감지) |
+| REST API | `src/control/rest_api.cpp` | C++ HTTP 서버, 6개 엔드포인트 |
+| 샌드박스 매니저 | `src/sandbox/sandbox_manager.cpp` | Linux namespace + SIGSTOP 기반 프로세스 격리 |
+| seccomp 필터 | `src/sandbox/seccomp_filter.cpp` | syscall 화이트리스트 기반 차단 (socket, execve, fork 등) |
+| 행동 모니터 | `src/sandbox/behavior_monitor.cpp` | ptrace 기반 syscall 추적 및 위험 행동 탐지 |
 
-print(f"포트스캔 시작: {target}")
-for port in ports:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
-        s.connect((target, port))
-        s.close()
-    except:
-        pass
-    print(f"  → 포트 {port} 스캔")
-    time.sleep(0.1)
+---
 
-print("완료!")
-EOF
+## REST API
+
+IDPS 실행 중 아래 엔드포인트로 데이터를 조회할 수 있습니다.
+```bash
+# IDPS 상태 조회
+curl http://localhost:8080/api/status
+
+# 경보 목록 조회 (최근 20개)
+curl http://localhost:8080/api/alerts?limit=20
+
+# 경보 통계 조회
+curl http://localhost:8080/api/alerts/stats
+
+# 격리된 프로세스 목록
+curl http://localhost:8080/api/sandbox
+
+# 룰 재로드
+curl -X POST http://localhost:8080/api/rules/reload
+```
+
+### 응답 예시
+```json
+// GET /api/status
+{
+  "status": "running",
+  "total_alerts": 9,
+  "isolated_processes": 1,
+  "version": "1.0"
+}
+
+// GET /api/alerts/stats
+{
+  "total": 9,
+  "critical": 3,
+  "high": 3,
+  "medium": 2,
+  "low": 0
+}
+```
+
+---
+
+## 웹 대시보드
+
+`dashboard/index.html` 을 브라우저에서 열면 실시간 모니터링 대시보드를 사용할 수 있습니다.
+\wsl$\Ubuntu\home\user\IDPS\dashboard\index.html
+
+### 기능
+
+- 경보 통계 실시간 시각화 (TOTAL / CRITICAL / HIGH / MEDIUM)
+- 등급별 분포 바 차트
+- 격리된 프로세스 목록
+- 최근 경보 테이블
+- 룰 재로드 버튼
+- 5초마다 자동 갱신
+
+---
+
+## 탐지 기능 상세
+
+### 시그니처 탐지 (Aho-Corasick)
+
+패킷 페이로드에서 악성 패턴을 실시간으로 탐지합니다.
+```json
+{
+  "id": "RULE-001",
+  "name": "악성 쉘 탐지",
+  "type": "signature",
+  "patterns": ["/bin/sh", "/bin/bash", "cmd.exe"],
+  "severity": "CRITICAL",
+  "action": "sandbox"
+}
+```
+
+### 포트스캔 탐지 (휴리스틱)
+
+슬라이딩 윈도우 기반으로 SYN 패킷을 분석해 포트스캔을 탐지합니다.
+```json
+{
+  "id": "RULE-004",
+  "name": "포트 스캔 탐지",
+  "type": "heuristic",
+  "threshold": { "connections": 20, "window_sec": 5 },
+  "severity": "HIGH",
+  "action": "sandbox"
+}
+```
+
+### seccomp-bpf syscall 필터
+
+격리된 프로세스에 syscall 화이트리스트를 적용합니다.
+
+| syscall | 기본 프로파일 | 엄격한 프로파일 |
+|---------|-------------|--------------|
+| read / write | ✅ 허용 | ✅ 허용 |
+| open / close | ✅ 허용 | ❌ 차단 |
+| socket | ❌ 차단 | ❌ 차단 |
+| connect | ❌ 차단 | ❌ 차단 |
+| execve | ❌ 차단 | ❌ 차단 |
+| fork / clone | ❌ 차단 | ❌ 차단 |
+| setuid | ❌ 차단 | ❌ 차단 |
+
+---
+
+## 테스트
+```bash
+cd build
+./idps_test
+```
+
+### 테스트 현황
+
+| 테스트 스위트 | 테스트 수 | 상태 |
+|-------------|---------|------|
+| SignatureEngineTest | 5개 | ✅ PASSED |
+| AlertManagerTest | 3개 | ✅ PASSED |
+| PolicyEngineTest | 6개 | ✅ PASSED |
+| SeccompFilterTest | 4개 | ✅ PASSED |
+| **합계** | **18개** | **✅ ALL PASSED** |
+
+---
+
+## 개발 과정
+
+각 모듈을 단계적으로 구현하고 통합했습니다.
+1단계: IDS 레이어
+패킷 캡처 → 패킷 파서 → 시그니처 엔진 → 경보 매니저
+2단계: 제어 레이어
+로거 → IPC 브로커 → 정책 엔진 → REST API
+3단계: 샌드박스 레이어
+샌드박스 매니저 → seccomp 필터 → 행동 모니터
+4단계: 고도화
+포트스캔 탐지 → 웹 대시보드 → 단위 테스트
 ##실행 결과
 <img width="307" height="421" alt="image" src="https://github.com/user-attachments/assets/affa3f43-022d-457d-9d76-1c5e4f8d9164" />
 <img width="777" height="488" alt="image" src="https://github.com/user-attachments/assets/971c5a57-c3b4-4cc8-904f-91856c53ff11" />
