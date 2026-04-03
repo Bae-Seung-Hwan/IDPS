@@ -20,8 +20,8 @@
 
 ## 데모
 
-> 스크린샷 / GIF 삽입 위치
-> `dashboard/index.html` 실행 화면, 터미널 탐지 로그 등
+<img width="1895" height="889" alt="image" src="https://github.com/user-attachments/assets/1c2cb397-06d2-4860-8b9f-96a90e32a9a1" />
+
 
 ---
 
