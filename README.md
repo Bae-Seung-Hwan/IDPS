@@ -196,7 +196,40 @@ sudo ./idps --interface eth0 --pcap ../tests/pcap_samples/portscan.pcap
 ## 라이선스
 
 MIT License. 자세한 내용은 [LICENSE](./LICENSE)를 참고하세요.
+## 추가
+포트스캔 탐지
+슬라이딩 윈도우로 같은 IP에서
+짧은 시간 안에 여러 포트에 SYN 패킷이 오면 → 포트스캔으로 판단
 
+예시:
+192.168.1.1 → 포트 80  (SYN)  ┐
+192.168.1.1 → 포트 443 (SYN)  │ 5초 안에
+192.168.1.1 → 포트 22  (SYN)  │ 20개 이상
+192.168.1.1 → 포트 3306(SYN)  ┘
+           → 🚨 포트스캔 탐지!
+python에서 직접 포트스캔 시뮬레이션
+code:
+python3 << 'EOF'
+import socket
+import time
+
+target = "8.8.8.8"  # 외부 IP로 스캔
+ports  = [80, 443, 22, 21, 3306, 5432, 8080, 8443, 25, 110]
+
+print(f"포트스캔 시작: {target}")
+for port in ports:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.5)
+        s.connect((target, port))
+        s.close()
+    except:
+        pass
+    print(f"  → 포트 {port} 스캔")
+    time.sleep(0.1)
+
+print("완료!")
+EOF
 ##실행 결과
 <img width="307" height="421" alt="image" src="https://github.com/user-attachments/assets/affa3f43-022d-457d-9d76-1c5e4f8d9164" />
 <img width="777" height="488" alt="image" src="https://github.com/user-attachments/assets/971c5a57-c3b4-4cc8-904f-91856c53ff11" />
