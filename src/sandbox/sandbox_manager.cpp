@@ -13,7 +13,7 @@
 #include <sched.h>
 #include <fcntl.h>
 #include <cstring>
-
+#include "seccomp_filter.hpp"
 SandboxManager::SandboxManager() {}
 
 SandboxManager::~SandboxManager() {
@@ -42,7 +42,7 @@ bool SandboxManager::isolate(pid_t pid,
         return false;
     }
 
-    std::cout << "\n[Sandbox] 🔒 격리 시작: PID=" << pid
+    std::cout << "\n[Sandbox]    격리 시작: PID=" << pid
               << " IP=" << src_ip
               << " 룰=" << rule_id << std::endl;
 
@@ -74,7 +74,7 @@ bool SandboxManager::isolate(pid_t pid,
     isolated_[pid] = entry;
 
     // 결과 출력
-    std::cout << "[Sandbox] ✅ 격리 완료:\n"
+    std::cout << "[Sandbox]     격리 완료:\n"
               << "   PID     : " << pid << "\n"
               << "   출발지  : " << src_ip << "\n"
               << "   룰      : " << rule_id << "\n"
@@ -109,10 +109,9 @@ bool SandboxManager::blockNetwork(pid_t pid) {
 }
 
 bool SandboxManager::applySeccomp(pid_t pid) {
-    // seccomp은 대상 프로세스 내부에서만 적용 가능
-    // 여기서는 로그만 남기고 실제 적용은 격리 프로세스 생성 시 수행
-    std::cout << "[Sandbox] ✓ seccomp 필터 예약: PID=" << pid << std::endl;
-    return true;
+    SeccompConfig config = SeccompFilter::defaultSandboxProfile();
+    SeccompFilter::printConfig(config);
+    return SeccompFilter::applyToChild(pid, config);
 }
 
 bool SandboxManager::applyNamespace(pid_t pid) {
@@ -132,7 +131,7 @@ void SandboxManager::printIsolated() const {
 
     std::cout << "\n\033[1;35m";
     std::cout << "╔══════════════════════════════════════╗\n";
-    std::cout << "║        🔒 격리된 프로세스 목록       ║\n";
+    std::cout << "║           격리된 프로세스 목록          ║\n";
     std::cout << "╠══════════════════════════════════════╣\n";
     std::cout << "\033[0m";
 
@@ -141,8 +140,8 @@ void SandboxManager::printIsolated() const {
     } else {
         for (const auto& [pid, entry] : isolated_) {
             std::string state_str =
-                entry.state == SandboxState::ISOLATED   ? "🔒 격리중" :
-                entry.state == SandboxState::TERMINATED ? "💀 종료됨" : "🟢 실행중";
+                entry.state == SandboxState::ISOLATED   ? " 격리중" :
+                entry.state == SandboxState::TERMINATED ? " 종료됨" : " 실행중";
 
             std::cout << "║ PID=" << pid
                       << " | " << state_str
